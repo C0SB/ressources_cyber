@@ -1,0 +1,23 @@
+title: SIGMA Rules
+author: Adam Swan
+tags:
+  - attack.t1552.001 
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: 
+      - '\notepad.exe'
+      - '\word.exe'
+      - '\excel.exe'
+      - '\wordpad.exe'
+      - '\notepad++.exe'
+    CommandLine|contains:
+      - 'pass'
+      - 'pwd'
+      - 'pw.'
+      - 'account'
+      - 'secret'
+      - 'details'
+  condition: selection
