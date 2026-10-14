@@ -1,42 +1,33 @@
+sudo docker network create \
+  --driver bridge \
+  --subnet 10.10.10.0/24 \
+  --gateway 10.10.10.1 \
+  -o com.docker.network.bridge.name=br-kali \
+  -o com.docker.network.bridge.enable_ip_masquerade=false \
+  reseau_kali
 
-services:
+  sudo docker network create \
+  --driver bridge \
+  --subnet 10.20.20.0/24 \
+  --gateway 10.20.20.1 \
+  -o com.docker.network.bridge.name=br-ubuntu \
+  -o com.docker.network.bridge.enable_ip_masquerade=false \
+  reseau_ubuntu
 
-  kali:
-    image: kalilinux/kali-rolling:latest
-    container_name: kali
-    hostname: kali
-    stdin_open: true
-    tty: true
-    command: sleep infinity
-    restart: unless-stopped
-    networks:
-      reseau_kali:
-        ipv4_address: 10.10.10.10
+  sudo docker run -dit \
+  --name kali \
+  --hostname kali \
+  --network reseau_kali \
+  --ip 10.10.10.10 \
+  kalilinux/kali-rolling \
+  sleep infinity
 
-  ubuntu:
-    image: ubuntu:24.04
-    container_name: ubuntu-cible
-    hostname: ubuntu-cible
-    stdin_open: true
-    tty: true
-    command: sleep infinity
-    restart: unless-stopped
-    networks:
-      reseau_ubuntu:
-        ipv4_address: 10.20.20.10
+  sudo docker run -dit \
+  --name ubuntu-cible \
+  --hostname ubuntu-cible \
+  --network reseau_ubuntu \
+  --ip 10.20.20.10 \
+  ubuntu:24.04 \
+  sleep infinity
 
-networks:
-
-  reseau_kali:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.10.10.0/24
-          gateway: 10.10.10.1
-
-  reseau_ubuntu:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.20.20.0/24
-          gateway: 10.20.20.1
+  
