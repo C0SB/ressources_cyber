@@ -1,0 +1,1 @@
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"MSF Meterpreter stageless HTTP - polling rapide sur URI base64url longue"; flow:established,to_server; http.uri; pcre:"/^\/[A-Za-z0-9_-]{29,128}$/"; threshold:type threshold, track by_both, count 10, seconds 5; classtype:trojan-activity; sid:9000202; rev:1;)
