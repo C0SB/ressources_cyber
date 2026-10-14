@@ -1,0 +1,42 @@
+
+services:
+
+  kali:
+    image: kalilinux/kali-rolling:latest
+    container_name: kali
+    hostname: kali
+    stdin_open: true
+    tty: true
+    command: sleep infinity
+    restart: unless-stopped
+    networks:
+      reseau_kali:
+        ipv4_address: 10.10.10.10
+
+  ubuntu:
+    image: ubuntu:24.04
+    container_name: ubuntu-cible
+    hostname: ubuntu-cible
+    stdin_open: true
+    tty: true
+    command: sleep infinity
+    restart: unless-stopped
+    networks:
+      reseau_ubuntu:
+        ipv4_address: 10.20.20.10
+
+networks:
+
+  reseau_kali:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24
+          gateway: 10.10.10.1
+
+  reseau_ubuntu:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.20.0/24
+          gateway: 10.20.20.1
