@@ -132,8 +132,8 @@ if [ -n "$used_by" ] && [[ "$used_by" != "${PROJECT}-wazuh.manager-"* ]]; then
 fi
 
 # Port du dashboard libre ? (sauf si c'est déjà notre stack)
-if ! docker ps -q --filter "label=com.docker.compose.project=$PROJECT" | grep -q .; then
-  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${DASH_PORT}$"; then
+if ! docker ps -q --filter "label=com.docker.compose.project=$PROJECT" | grep . >/dev/null; then
+  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -E "[:.]${DASH_PORT}$" >/dev/null; then
     die "Le port $DASH_PORT est déjà utilisé sur la Debian. Relancez avec --port <autre port>."
   fi
 fi
@@ -180,7 +180,7 @@ ok "Script d'alerte : $ZBX_ALERT_DIR/wazuh-alert.sh"
 # Le serveur Zabbix doit voir ces deux dossiers : on le recrée si nécessaire
 ZBX_RECREATED=0
 if docker inspect "$CT_ZBX" >/dev/null 2>&1; then
-  if docker inspect -f '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$CT_ZBX" | grep -qx "$ZBX_LOG_DIR"; then
+  if docker inspect -f '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$CT_ZBX" | grep -x "$ZBX_LOG_DIR" >/dev/null; then
     ok "$CT_ZBX voit déjà les dossiers d'intégration"
   else
     log "Recréation de $CT_ZBX avec les dossiers d'intégration (données conservées dans la base)"
@@ -333,7 +333,7 @@ ok "Conteneurs lancés"
 
 # ---------------------------- 6. Règles Zabbix dans le manager ---------------
 log "Attente du manager Wazuh"
-manager_ready() { dc exec -T wazuh.manager /var/ossec/bin/wazuh-control status 2>/dev/null | grep -q 'wazuh-analysisd is running'; }
+manager_ready() { dc exec -T wazuh.manager /var/ossec/bin/wazuh-control status 2>/dev/null | grep 'wazuh-analysisd is running' >/dev/null; }
 wait_for 300 manager_ready || die "Le manager ne démarre pas (voir : cd $SN_DIR && docker compose -p $PROJECT logs wazuh.manager)."
 ok "Manager démarré"
 
@@ -366,7 +366,7 @@ FAIL=0
 
 # Ubuntu -> manager (1514 événements, 1515 enregistrement)
 tcp_from_ubuntu() { docker exec "$CT_UBUNTU" bash -c "timeout 3 bash -c 'echo > /dev/tcp/${IP_WAZUH_UBUNTU}/$1'"; }
-if docker inspect -f '{{.State.Running}}' "$CT_UBUNTU" 2>/dev/null | grep -q true; then
+if docker inspect -f '{{.State.Running}}' "$CT_UBUNTU" 2>/dev/null | grep true >/dev/null; then
   for p in 1514 1515; do
     if wait_for 90 tcp_from_ubuntu "$p"; then ok "$CT_UBUNTU joint le manager sur ${IP_WAZUH_UBUNTU}:$p"
     else warn "ÉCHEC : $CT_UBUNTU ne joint pas ${IP_WAZUH_UBUNTU}:$p"; FAIL=1; fi
@@ -377,7 +377,7 @@ fi
 
 # Chaîne Zabbix -> fichier -> Wazuh (test de bout en bout)
 zbx_alert_seen() { dc exec -T wazuh.manager grep -q 'TEST setup-wazuh' /var/ossec/logs/alerts/alerts.json; }
-if docker inspect -f '{{.State.Running}}' "$CT_ZBX" 2>/dev/null | grep -q true; then
+if docker inspect -f '{{.State.Running}}' "$CT_ZBX" 2>/dev/null | grep true >/dev/null; then
   if docker exec "$CT_ZBX" /usr/lib/zabbix/alertscripts/wazuh-alert.sh \
        "Problem: TEST setup-wazuh" "Evenement de test genere par setup-wazuh.sh" "High"; then
     if wait_for 60 zbx_alert_seen; then ok "Alerte Zabbix de test reçue et classée par Wazuh"
