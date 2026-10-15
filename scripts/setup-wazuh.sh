@@ -333,7 +333,13 @@ ok "Conteneurs lancés"
 
 # ---------------------------- 6. Règles Zabbix dans le manager ---------------
 log "Attente du manager Wazuh"
-manager_ready() { dc exec -T wazuh.manager /var/ossec/bin/wazuh-control status 2>/dev/null | grep 'wazuh-analysisd is running' >/dev/null; }
+manager_ready() {
+  # wazuh-control status renvoie un code d'erreur dès qu'un démon optionnel est arrêté
+  # (maild, integratord...) : on lit donc la sortie sans tenir compte du code retour.
+  local out
+  out="$(dc exec -T wazuh.manager /var/ossec/bin/wazuh-control status 2>/dev/null || true)"
+  [[ "$out" == *"wazuh-analysisd is running"* ]]
+}
 wait_for 300 manager_ready || die "Le manager ne démarre pas (voir : cd $SN_DIR && docker compose -p $PROJECT logs wazuh.manager)."
 ok "Manager démarré"
 
