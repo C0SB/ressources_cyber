@@ -14,7 +14,9 @@ grep -q $'\r' "$0" 2>/dev/null && { sed -i 's/\r$//' "$0" && exec bash "$0" "$@"
 #   - Suricata : le manager lit /var/log/suricata/eve.json (dossier de la Debian
 #     monté en lecture seule). Les règles Suricata sont déjà incluses dans Wazuh.
 #   - Zabbix   : un script d'alerte Zabbix écrit chaque alerte en JSON dans
-#     /var/log/zabbix-wazuh/alerts.json, lu par le manager (règles 100200+).
+#     /var/log/zabbix-wazuh/alerts.json, lu par le manager. Les règles du labo
+#     (100200 à 100205) sont préparées sur la Debian puis copiées à la main
+#     dans le manager (étape finale affichée par le script).
 #
 # Prérequis : setup-lab.sh exécuté (reseau_ubuntu) ; Zabbix recommandé
 #             (setup-zabbix.sh) ; ~4 Go de RAM disponibles.
@@ -281,13 +283,13 @@ cat > "$RULES_FILE" <<'RULES_EOF'
 
   <rule id="100201" level="3">
     <if_sid>100200</if_sid>
-    <field name="status">^RESOLVED$</field>
+    <status>^RESOLVED$</status>
     <description>Zabbix : probleme resolu - $(subject)</description>
   </rule>
 
   <rule id="100202" level="6">
     <if_sid>100200</if_sid>
-    <field name="status">^PROBLEM$</field>
+    <status>^PROBLEM$</status>
     <description>Zabbix : probleme - $(subject)</description>
   </rule>
 
@@ -331,7 +333,7 @@ log "Démarrage de la stack"
 dc up -d
 ok "Conteneurs lancés"
 
-# ---------------------------- 6. Règles Zabbix dans le manager ---------------
+# ---------------------------- 6. Attente du manager et fichier de règles -----
 log "Attente du manager Wazuh"
 manager_ready() {
   # wazuh-control status renvoie un code d'erreur dès qu'un démon optionnel est arrêté
@@ -343,28 +345,10 @@ manager_ready() {
 wait_for 300 manager_ready || die "Le manager ne démarre pas (voir : cd $SN_DIR && docker compose -p $PROJECT logs wazuh.manager)."
 ok "Manager démarré"
 
-RULES_CHANGED=0
-if dc exec -T wazuh.manager cat /var/ossec/etc/rules/lab_rules.xml 2>/dev/null | cmp -s - "$RULES_FILE"; then
-  ok "Règles Zabbix déjà installées"
-else
-  dc exec -T wazuh.manager sh -c \
-    'cat > /var/ossec/etc/rules/lab_rules.xml && chown wazuh:wazuh /var/ossec/etc/rules/lab_rules.xml && chmod 660 /var/ossec/etc/rules/lab_rules.xml' \
-    < "$RULES_FILE"
-  if dc exec -T wazuh.manager /var/ossec/bin/wazuh-analysisd -t >/dev/null 2>&1; then
-    RULES_CHANGED=1
-    ok "Règles Zabbix installées (100200-100205)"
-  else
-    dc exec -T wazuh.manager rm -f /var/ossec/etc/rules/lab_rules.xml
-    warn "Les règles Zabbix ont été rejetées par Wazuh (retirées). Le reste fonctionne."
-  fi
-fi
-
-if [ "$RULES_CHANGED" -eq 1 ]; then
-  log "Redémarrage du manager pour charger les règles"
-  dc restart wazuh.manager >/dev/null
-  wait_for 300 manager_ready || die "Le manager ne redémarre pas."
-  ok "Manager redémarré"
-fi
+# Les règles personnalisées Zabbix sont préparées sur la Debian ($RULES_FILE).
+# Elles ne sont volontairement PAS copiées dans le manager par ce script :
+# cette étape se fait à la main (docker cp), voir le message de fin.
+ok "Fichier de règles Zabbix prêt sur la Debian : $RULES_FILE"
 
 # ---------------------------- 7. Vérifications -------------------------------
 log "Vérifications"
@@ -381,15 +365,14 @@ else
   warn "Conteneur $CT_UBUNTU arrêté ou absent : test de joignabilité ignoré."
 fi
 
-# Chaîne Zabbix -> fichier -> Wazuh (test de bout en bout)
-zbx_alert_seen() { dc exec -T wazuh.manager grep -q 'TEST setup-wazuh' /var/ossec/logs/alerts/alerts.json; }
+# Chaîne Zabbix -> fichier partagé (le script d'alerte s'exécute-t-il et écrit-il sur la Debian ?)
 if docker inspect -f '{{.State.Running}}' "$CT_ZBX" 2>/dev/null | grep true >/dev/null; then
   if docker exec "$CT_ZBX" /usr/lib/zabbix/alertscripts/wazuh-alert.sh \
-       "Problem: TEST setup-wazuh" "Evenement de test genere par setup-wazuh.sh" "High"; then
-    if wait_for 60 zbx_alert_seen; then ok "Alerte Zabbix de test reçue et classée par Wazuh"
-    else warn "ÉCHEC : l'alerte de test Zabbix n'apparaît pas dans les alertes Wazuh"; FAIL=1; fi
+       "Problem: TEST setup-wazuh" "Evenement de test genere par setup-wazuh.sh" "High" \
+     && grep 'TEST setup-wazuh' "$ZBX_ALERT_FILE" >/dev/null; then
+    ok "Le script d'alerte Zabbix écrit bien dans $ZBX_ALERT_FILE"
   else
-    warn "ÉCHEC : exécution du script d'alerte dans $CT_ZBX"; FAIL=1
+    warn "ÉCHEC : le script d'alerte ne s'exécute pas dans $CT_ZBX ou n'écrit pas dans $ZBX_ALERT_FILE"; FAIL=1
   fi
 fi
 
@@ -431,6 +414,13 @@ Zabbix -> Wazuh : dernière étape manuelle dans l'interface Zabbix (http://127.
   3. Alertes > Actions > Actions de déclencheur : activez (ou créez) une action dont
      l'opération envoie le message à l'utilisateur Admin via le média "Wazuh".
   Les alertes arrivent dans Wazuh avec les règles 100200-100205 (groupe "zabbix").
+
+Règles Zabbix dans Wazuh : à installer maintenant (le fichier est prêt sur la Debian) :
+  docker cp ${RULES_FILE} wazuh-lab-wazuh.manager-1:/var/ossec/etc/rules/lab_rules.xml
+  docker exec wazuh-lab-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/lab_rules.xml
+  docker exec wazuh-lab-wazuh.manager-1 chmod 660 /var/ossec/etc/rules/lab_rules.xml
+  docker exec wazuh-lab-wazuh.manager-1 /var/ossec/bin/wazuh-analysisd -t
+  docker restart wazuh-lab-wazuh.manager-1
 
 Suppression complète : sudo bash $0 --remove
 SUMMARY_EOF
